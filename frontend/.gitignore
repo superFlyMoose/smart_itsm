@@ -1,6 +1,8 @@
 node_modules
 dist
 dist-ssr
+# TypeScript 增量构建缓存（本机生成物，不应入库）
+*.tsbuildinfo
 *.local
 .DS_Store
 .vscode/*
