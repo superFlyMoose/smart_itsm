@@ -1,0 +1,190 @@
+@import "tailwindcss";
+
+/*
+ * Smart ITSM 设计令牌
+ * 单一品牌强调色（brand blue），8px 圆角体系（徽标/头像除外使用胶囊），
+ * 语义色仅用于状态表达。明暗双主题通过 .dark 类切换。
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue",
+    Arial, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* 品牌色阶（全项目唯一强调色） */
+  --color-brand-50: #eef4ff;
+  --color-brand-100: #d9e6ff;
+  --color-brand-200: #bcd3ff;
+  --color-brand-300: #8eb6ff;
+  --color-brand-400: #598df8;
+  --color-brand-500: #336bef;
+  --color-brand-600: #2457e0;
+  --color-brand-700: #1f46b6;
+  --color-brand-800: #1f3d90;
+  --color-brand-900: #203872;
+  --color-brand-950: #17244a;
+
+  /* 统一圆角：容器/控件 8px */
+  --radius-lg: 8px;
+
+  /* 层级刻度：顶栏/侧栏 40，下拉 50，弹窗 60，通知 70 */
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-alt: var(--surface-alt);
+  --color-border-subtle: var(--border-subtle);
+  --color-strong: var(--strong);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-contrast: var(--brand-contrast);
+  --color-brand-soft: var(--brand-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-violet: var(--violet);
+  --color-violet-soft: var(--violet-soft);
+}
+
+:root {
+  --bg: #f4f6fa;
+  --surface: #ffffff;
+  --surface-alt: #f8fafc;
+  --border-subtle: #e3e8f0;
+  --strong: #182234;
+  --muted: #5a6678;
+  --faint: #8a94a6;
+
+  --brand: #2457e0;
+  --brand-hover: #1f46b6;
+  --brand-contrast: #ffffff;
+  --brand-soft: #e9f0ff;
+
+  --success: #15803d;
+  --success-soft: #e7f6ec;
+  --warning: #b45309;
+  --warning-soft: #fdf1e0;
+  --danger: #dc2626;
+  --danger-soft: #fdecec;
+  --violet: #6d42d4;
+  --violet-soft: #f0ebfd;
+
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #0f1521;
+  --surface: #161e2c;
+  --surface-alt: #1d2738;
+  --border-subtle: #2a3548;
+  --strong: #e7ecf4;
+  --muted: #9aa7ba;
+  --faint: #6b778d;
+
+  --brand: #598df8;
+  --brand-hover: #7ba3fa;
+  --brand-contrast: #0f1521;
+  --brand-soft: #1b2947;
+
+  --success: #4ade80;
+  --success-soft: #14311f;
+  --warning: #fbbf24;
+  --warning-soft: #3a2a10;
+  --danger: #f87171;
+  --danger-soft: #411d1d;
+  --violet: #a78bfa;
+  --violet-soft: #2c2247;
+
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--strong);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--brand) 22%, transparent);
+}
+
+/* 细滚动条，贴合企业控制台密度 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--faint);
+}
+
+/* 骨架屏微光 */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-alt);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--strong) 7%, transparent),
+    transparent
+  );
+  animation: shimmer 1.4s infinite;
+}
+
+/* 数字/编号使用等宽，提升表格可读性 */
+.tnum {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 尊重减弱动效偏好 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
