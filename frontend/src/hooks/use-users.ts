@@ -14,6 +14,15 @@ export function useUsers(query: UserQuery) {
   })
 }
 
+/** 用户精简选项（无需 user:manage 权限，供下拉选择使用） */
+export function useUserOptions() {
+  return useQuery({
+    queryKey: queryKeys.users.options(),
+    queryFn: () => authApi.getUserOptions(),
+    staleTime: 5 * 60_000,
+  })
+}
+
 export function useUserMutations() {
   const qc = useQueryClient()
   const invalidate = () =>

@@ -56,6 +56,7 @@ export function TicketActions({ ticket }: { ticket: TicketDetail }) {
 
   const cancelableStatuses = ['OPEN', 'ASSIGNED', 'PROCESSING', 'WAITING_COLLABORATION']
   const nudgeableStatuses = [
+    'OPEN',
     'ASSIGNED',
     'PROCESSING',
     'WAITING_COLLABORATION',

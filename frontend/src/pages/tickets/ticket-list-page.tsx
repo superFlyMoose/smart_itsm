@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Funnel, Info, MagnifyingGlass, PlusCircle, X } from '@phosphor-icons/react'
+import { Funnel, Info, MagnifyingGlass, PlusCircle, Eye, X } from '@phosphor-icons/react'
 import { PageHeader } from '@/components/layout/page-header'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -251,7 +251,7 @@ export function TicketListPage() {
             }}
           />
         ) : isLoading ? (
-          <TableSkeleton columns={7} />
+          <TableSkeleton columns={8} />
         ) : data && data.records.length > 0 ? (
           <>
             <Table>
@@ -264,6 +264,7 @@ export function TicketListPage() {
                   <TH>分类</TH>
                   <TH>处理人</TH>
                   <TH>创建时间</TH>
+                  <TH>操作</TH>
                 </tr>
               </THead>
               <TBody>
@@ -290,6 +291,19 @@ export function TicketListPage() {
                     <TD className="text-muted">{ticket.assigneeName ?? '待分配'}</TD>
                     <TD className="tnum whitespace-nowrap text-muted">
                       {formatDateTime(ticket.createdAt)}
+                    </TD>
+                    <TD className="whitespace-nowrap">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        icon={<Eye size={15} />}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          navigate(`/tickets/${ticket.id}`)
+                        }}
+                      >
+                        查看详情
+                      </Button>
                     </TD>
                   </TR>
                 ))}

@@ -21,6 +21,7 @@ import {
   BookOpen,
   CheckCircle,
   ClockCountdown,
+  Eye,
   PlusCircle,
   Stack,
   Ticket,
@@ -433,7 +434,7 @@ function UserDashboard() {
         {error ? (
           <ErrorState message={(error as Error).message} onRetry={() => void refetch()} />
         ) : isLoading ? (
-          <TableSkeleton columns={4} />
+          <TableSkeleton columns={5} />
         ) : data && data.records.length > 0 ? (
           <Table>
             <THead>
@@ -442,6 +443,7 @@ function UserDashboard() {
                 <TH>标题</TH>
                 <TH>状态</TH>
                 <TH>创建时间</TH>
+                <TH>操作</TH>
               </tr>
             </THead>
             <TBody>
@@ -462,6 +464,19 @@ function UserDashboard() {
                   </TD>
                   <TD className="tnum whitespace-nowrap text-muted">
                     {formatDateTime(ticket.createdAt)}
+                  </TD>
+                  <TD className="whitespace-nowrap">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      icon={<Eye size={15} />}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        navigate(`/tickets/${ticket.id}`, { state: { from: location.pathname } })
+                      }}
+                    >
+                      查看工单
+                    </Button>
                   </TD>
                 </TR>
               ))}

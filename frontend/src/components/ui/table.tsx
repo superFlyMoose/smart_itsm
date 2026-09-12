@@ -18,9 +18,11 @@ export function TBody({ children }: { children: ReactNode }) {
   return <tbody className="divide-y divide-border-subtle">{children}</tbody>
 }
 
-export function TR({ children, className = '' }: HTMLAttributes<HTMLTableRowElement>) {
+export function TR({ children, className = '', ...rest }: HTMLAttributes<HTMLTableRowElement>) {
   return (
-    <tr className={`transition-colors hover:bg-surface-alt/50 ${className}`}>{children}</tr>
+    <tr className={`transition-colors hover:bg-surface-alt/50 ${className}`} {...rest}>
+      {children}
+    </tr>
   )
 }
 

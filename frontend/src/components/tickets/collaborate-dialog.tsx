@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { Field } from '@/components/ui/field'
 import { Textarea } from '@/components/ui/textarea'
-import { useUsers } from '@/hooks/use-users'
+import { useUserOptions } from '@/hooks/use-users'
 import { useAuthStore } from '@/lib/stores/auth'
 
 interface CollaborateDialogProps {
@@ -21,7 +21,7 @@ export function CollaborateDialog({
   onSubmit,
 }: CollaborateDialogProps) {
   const currentUserId = useAuthStore((state) => state.user?.id)
-  const { data } = useUsers({ pageNum: 1, pageSize: 100, status: 'ACTIVE' })
+  const { data: options } = useUserOptions()
   const [collaboratorId, setCollaboratorId] = useState('')
   const [message, setMessage] = useState('')
 
@@ -66,7 +66,7 @@ export function CollaborateDialog({
             onChange={(event) => setCollaboratorId(event.target.value)}
           >
             <option value="">请选择协作人</option>
-            {data?.records
+            {(options ?? [])
               .filter((user) => user.id !== currentUserId)
               .map((user) => (
                 <option key={user.id} value={user.id}>

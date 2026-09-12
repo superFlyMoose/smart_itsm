@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { UsersThree, CheckCircle } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/states'
@@ -18,6 +19,7 @@ export function CollaborationPanel({
   ticketId: number
   canCollaborate: boolean
 }) {
+  const navigate = useNavigate()
   const { data, isLoading } = useCollaborations(ticketId)
   const mutations = useTicketMutations(ticketId)
   const currentUserId = useAuthStore((state) => state.user?.id)
@@ -96,12 +98,15 @@ export function CollaborationPanel({
                       variant="secondary"
                       icon={<CheckCircle size={15} />}
                       loading={mutations.completeCollaboration.isPending}
-                      onClick={() =>
-                        runAction(
+                      onClick={async () => {
+                        await runAction(
                           mutations.completeCollaboration.mutateAsync(item.id),
                           '协作已完成',
                         )
-                      }
+                        // 协作人完成协作后状态变 COMPLETED，随即失去该工单查看权，
+                        // 停留详情页会 403，故主动跳转回工单列表
+                        navigate('/tickets')
+                      }}
                     >
                       完成协作
                     </Button>

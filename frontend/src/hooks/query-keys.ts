@@ -12,6 +12,7 @@ export const queryKeys = {
   },
   users: {
     list: (query: unknown) => ['users', 'list', query] as const,
+    options: () => ['users', 'options'] as const,
     profile: () => ['users', 'me'] as const,
   },
   categories: { tree: () => ['categories', 'tree'] as const },
