@@ -3,6 +3,8 @@ package com.itsm.smartitsm.module.notification.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.itsm.smartitsm.common.cache.CacheKeys;
+import com.itsm.smartitsm.common.cache.RedisCacheService;
 import com.itsm.smartitsm.common.enums.NotificationTypeEnum;
 import com.itsm.smartitsm.common.exception.BusinessException;
 import com.itsm.smartitsm.common.result.PageResult;
@@ -16,6 +18,7 @@ import com.itsm.smartitsm.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.util.List;
 
 /**
@@ -27,7 +30,11 @@ public class NotificationServiceImpl implements NotificationService {
 
     private static final String RELATED_TYPE_TICKET = "TICKET";
 
+    /** 未读数缓存 TTL：30 秒，写操作主动失效，短 TTL 作为兜底 */
+    private static final Duration UNREAD_TTL = Duration.ofSeconds(30);
+
     private final NotificationMapper notificationMapper;
+    private final RedisCacheService cache;
 
     @Override
     public void create(Long userId, NotificationTypeEnum type, String title, String content,
@@ -44,6 +51,7 @@ public class NotificationServiceImpl implements NotificationService {
         notification.setRelatedId(relatedId);
         notification.setIsRead(0);
         notificationMapper.insert(notification);
+        cache.delete(CacheKeys.notificationUnread(userId));
     }
 
     @Override
@@ -61,9 +69,20 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public Long unreadCount() {
         Long userId = SecurityUtils.getCurrentUserId();
-        return notificationMapper.selectCount(new LambdaQueryWrapper<Notification>()
+        String key = CacheKeys.notificationUnread(userId);
+        // 小整数经 JSON 反序列化为 Integer，统一用字符串转 long，避免类型转换异常
+        Long cached = cache.getLong(key, -1L);
+        if (cached >= 0) {
+            return cached;
+        }
+        Long count = notificationMapper.selectCount(new LambdaQueryWrapper<Notification>()
                 .eq(Notification::getUserId, userId)
                 .eq(Notification::getIsRead, 0));
+        if (count == null) {
+            count = 0L;
+        }
+        cache.set(key, count, UNREAD_TTL);
+        return count;
     }
 
     @Override
@@ -75,6 +94,7 @@ public class NotificationServiceImpl implements NotificationService {
         }
         notification.setIsRead(1);
         notificationMapper.updateById(notification);
+        cache.delete(CacheKeys.notificationUnread(userId));
     }
 
     @Override
@@ -84,6 +104,7 @@ public class NotificationServiceImpl implements NotificationService {
                 .eq(Notification::getUserId, userId)
                 .eq(Notification::getIsRead, 0)
                 .set(Notification::getIsRead, 1));
+        cache.delete(CacheKeys.notificationUnread(userId));
     }
 
     private NotificationVO toVO(Notification notification) {

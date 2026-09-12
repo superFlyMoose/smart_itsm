@@ -11,7 +11,7 @@ import com.itsm.smartitsm.common.exception.BusinessException;
 import com.itsm.smartitsm.common.result.PageResult;
 import com.itsm.smartitsm.common.result.ResultCode;
 import com.itsm.smartitsm.common.util.PageUtil;
-import com.itsm.smartitsm.module.notification.service.NotificationService;
+import com.itsm.smartitsm.module.notification.mq.NotificationPublisher;
 import com.itsm.smartitsm.module.team.entity.SysTeam;
 import com.itsm.smartitsm.module.team.mapper.SysTeamMapper;
 import com.itsm.smartitsm.module.ticket.dto.TicketTransferRequestAuditDTO;
@@ -64,7 +64,7 @@ public class TicketTransferRequestServiceImpl implements TicketTransferRequestSe
     private final SysTeamMapper sysTeamMapper;
     private final SysUserMapper sysUserMapper;
     private final TicketStateMachine ticketStateMachine;
-    private final NotificationService notificationService;
+    private final NotificationPublisher notificationPublisher;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -180,13 +180,13 @@ public class TicketTransferRequestServiceImpl implements TicketTransferRequestSe
                 current.name(), target.name(),
                 "跨团队转派审批通过，转派至[" + teamName(request.getToTeamId()) + "]团队");
 
-        notificationService.create(request.getTargetAssigneeId(),
+        notificationPublisher.publish(request.getTargetAssigneeId(),
                 NotificationTypeEnum.TICKET_TRANSFERRED,
                 "您有转派的工单待接受",
                 "工单[" + ticket.getTicketNo() + "]" + ticket.getTitle()
                         + " 已转派给您，请及时接受处理。",
                 RELATED_TYPE_TICKET, ticket.getId());
-        notificationService.create(request.getRequesterId(),
+        notificationPublisher.publish(request.getRequesterId(),
                 NotificationTypeEnum.TRANSFER_REQUEST_APPROVED,
                 "您的转派申请已通过",
                 "工单[" + ticket.getTicketNo() + "] 的跨团队转派申请已审批通过，工单已转移至目标团队。",
@@ -219,7 +219,7 @@ public class TicketTransferRequestServiceImpl implements TicketTransferRequestSe
 
         Ticket ticket = ticketMapper.selectById(request.getTicketId());
         String ticketNo = ticket == null ? "#" + request.getTicketId() : ticket.getTicketNo();
-        notificationService.create(request.getRequesterId(),
+        notificationPublisher.publish(request.getRequesterId(),
                 NotificationTypeEnum.TRANSFER_REQUEST_REJECTED,
                 "您的转派申请被拒绝",
                 "工单[" + ticketNo + "] 的跨团队转派申请被目标团队拒绝。"
@@ -360,7 +360,7 @@ public class TicketTransferRequestServiceImpl implements TicketTransferRequestSe
             leaderIds.addAll(leaders);
         }
         for (Long leaderId : leaderIds) {
-            notificationService.create(leaderId, type, title, content,
+            notificationPublisher.publish(leaderId, type, title, content,
                     RELATED_TYPE_TRANSFER_REQUEST, request.getId());
         }
     }

@@ -1,6 +1,8 @@
 package com.itsm.smartitsm.module.department.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.itsm.smartitsm.common.cache.CacheKeys;
+import com.itsm.smartitsm.common.cache.RedisCacheService;
 import com.itsm.smartitsm.common.exception.BusinessException;
 import com.itsm.smartitsm.common.result.ResultCode;
 import com.itsm.smartitsm.module.department.dto.DepartmentSaveDTO;
@@ -11,6 +13,7 @@ import com.itsm.smartitsm.module.department.vo.DepartmentTreeVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -23,10 +26,18 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DepartmentServiceImpl implements DepartmentService {
 
+    /** 部门树缓存 TTL：1 小时 */
+    private static final Duration TREE_TTL = Duration.ofHours(1);
+
     private final SysDepartmentMapper sysDepartmentMapper;
+    private final RedisCacheService cache;
 
     @Override
     public List<DepartmentTreeVO> tree() {
+        List<DepartmentTreeVO> cached = cache.get(CacheKeys.DEPARTMENT_TREE);
+        if (cached != null) {
+            return cached;
+        }
         List<SysDepartment> departments = sysDepartmentMapper.selectList(
                 new LambdaQueryWrapper<SysDepartment>()
                         .eq(SysDepartment::getStatus, 1)
@@ -42,6 +53,7 @@ public class DepartmentServiceImpl implements DepartmentService {
                 roots.add(node);
             }
         }
+        cache.set(CacheKeys.DEPARTMENT_TREE, roots, TREE_TTL);
         return roots;
     }
 
@@ -53,6 +65,7 @@ public class DepartmentServiceImpl implements DepartmentService {
         department.setManagerId(dto.getManagerId());
         department.setStatus(1);
         sysDepartmentMapper.insert(department);
+        cache.delete(CacheKeys.DEPARTMENT_TREE);
         return department.getId();
     }
 
@@ -63,6 +76,7 @@ public class DepartmentServiceImpl implements DepartmentService {
         department.setParentId(dto.getParentId());
         department.setManagerId(dto.getManagerId());
         sysDepartmentMapper.updateById(department);
+        cache.delete(CacheKeys.DEPARTMENT_TREE);
     }
 
     @Override
@@ -70,6 +84,7 @@ public class DepartmentServiceImpl implements DepartmentService {
         SysDepartment department = getDepartmentOrThrow(departmentId);
         department.setStatus(0);
         sysDepartmentMapper.updateById(department);
+        cache.delete(CacheKeys.DEPARTMENT_TREE);
     }
 
     private SysDepartment getDepartmentOrThrow(Long departmentId) {

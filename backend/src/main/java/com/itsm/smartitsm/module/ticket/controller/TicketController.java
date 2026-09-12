@@ -77,10 +77,10 @@ public class TicketController {
     }
 
     /**
-     * 分配工单
+     * 分配工单（含重新分配，权限码 ticket:assign 或 ticket:reassign）
      */
     @PostMapping("/{ticketId}/assign")
-    @PreAuthorize("hasAuthority('ticket:assign')")
+    @PreAuthorize("hasAnyAuthority('ticket:assign','ticket:reassign')")
     public Result<Void> assign(@PathVariable Long ticketId, @Valid @RequestBody TicketAssignDTO dto) {
         ticketService.assign(ticketId, dto);
         return Result.success();

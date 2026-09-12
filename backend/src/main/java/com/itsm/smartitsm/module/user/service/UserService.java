@@ -6,6 +6,7 @@ import com.itsm.smartitsm.module.user.dto.UserAdminUpdateDTO;
 import com.itsm.smartitsm.module.user.dto.UserCreateDTO;
 import com.itsm.smartitsm.module.user.dto.UserProfileUpdateDTO;
 import com.itsm.smartitsm.module.user.dto.UserQueryDTO;
+import com.itsm.smartitsm.module.user.vo.UserOptionVO;
 import com.itsm.smartitsm.module.user.vo.UserVO;
 
 import java.util.List;
@@ -19,6 +20,11 @@ public interface UserService {
      * 分页查询用户（管理员）
      */
     PageResult<UserVO> pageUsers(UserQueryDTO query);
+
+    /**
+     * 查询启用状态用户的简要选项（登录用户可用，供协作人等下拉选择）
+     */
+    List<UserOptionVO> listActiveOptions();
 
     /**
      * 创建用户（管理员）

@@ -1,6 +1,8 @@
 package com.itsm.smartitsm.module.category.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.itsm.smartitsm.common.cache.CacheKeys;
+import com.itsm.smartitsm.common.cache.RedisCacheService;
 import com.itsm.smartitsm.common.exception.BusinessException;
 import com.itsm.smartitsm.common.result.ResultCode;
 import com.itsm.smartitsm.module.category.dto.CategorySaveDTO;
@@ -11,6 +13,7 @@ import com.itsm.smartitsm.module.category.vo.CategoryTreeVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -23,10 +26,18 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class CategoryServiceImpl implements CategoryService {
 
+    /** 分类树缓存 TTL：1 小时 */
+    private static final Duration TREE_TTL = Duration.ofHours(1);
+
     private final TicketCategoryMapper ticketCategoryMapper;
+    private final RedisCacheService cache;
 
     @Override
     public List<CategoryTreeVO> tree() {
+        List<CategoryTreeVO> cached = cache.get(CacheKeys.CATEGORY_TREE);
+        if (cached != null) {
+            return cached;
+        }
         List<TicketCategory> categories = ticketCategoryMapper.selectList(
                 new LambdaQueryWrapper<TicketCategory>()
                         .eq(TicketCategory::getStatus, 1)
@@ -42,6 +53,7 @@ public class CategoryServiceImpl implements CategoryService {
                 roots.add(node);
             }
         }
+        cache.set(CacheKeys.CATEGORY_TREE, roots, TREE_TTL);
         return roots;
     }
 
@@ -53,6 +65,7 @@ public class CategoryServiceImpl implements CategoryService {
         category.setDescription(dto.getDescription());
         category.setStatus(1);
         ticketCategoryMapper.insert(category);
+        evictCache();
         return category.getId();
     }
 
@@ -63,6 +76,7 @@ public class CategoryServiceImpl implements CategoryService {
         category.setParentId(dto.getParentId());
         category.setDescription(dto.getDescription());
         ticketCategoryMapper.updateById(category);
+        evictCache();
     }
 
     @Override
@@ -70,6 +84,15 @@ public class CategoryServiceImpl implements CategoryService {
         TicketCategory category = getCategoryOrThrow(categoryId);
         category.setStatus(0);
         ticketCategoryMapper.updateById(category);
+        evictCache();
+    }
+
+    /**
+     * 失效分类树与分类名称缓存
+     */
+    private void evictCache() {
+        cache.delete(CacheKeys.CATEGORY_TREE);
+        cache.deleteByPrefix(CacheKeys.CATEGORY_BASE_PREFIX);
     }
 
     private TicketCategory getCategoryOrThrow(Long categoryId) {

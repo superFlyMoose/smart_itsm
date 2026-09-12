@@ -9,6 +9,7 @@ import com.itsm.smartitsm.module.user.dto.UserProfileUpdateDTO;
 import com.itsm.smartitsm.module.user.dto.UserQueryDTO;
 import com.itsm.smartitsm.module.user.dto.UserRoleAssignDTO;
 import com.itsm.smartitsm.module.user.service.UserService;
+import com.itsm.smartitsm.module.user.vo.UserOptionVO;
 import com.itsm.smartitsm.module.user.vo.UserVO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +21,8 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 /**
  * 用户接口
@@ -38,6 +41,14 @@ public class UserController {
     @PreAuthorize("hasAuthority('user:manage')")
     public Result<PageResult<UserVO>> pageUsers(UserQueryDTO query) {
         return Result.success(userService.pageUsers(query));
+    }
+
+    /**
+     * 查询启用用户简要选项（任意登录用户可用，供协作人等下拉选择，不暴露敏感字段）
+     */
+    @GetMapping("/options")
+    public Result<List<UserOptionVO>> listActiveOptions() {
+        return Result.success(userService.listActiveOptions());
     }
 
     /**

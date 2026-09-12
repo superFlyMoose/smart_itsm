@@ -1,6 +1,8 @@
 package com.itsm.smartitsm.module.team.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.itsm.smartitsm.common.cache.CacheKeys;
+import com.itsm.smartitsm.common.cache.RedisCacheService;
 import com.itsm.smartitsm.common.exception.BusinessException;
 import com.itsm.smartitsm.common.result.ResultCode;
 import com.itsm.smartitsm.module.department.entity.SysDepartment;
@@ -41,6 +43,7 @@ public class TeamServiceImpl implements TeamService {
     private final SysTeamMemberMapper sysTeamMemberMapper;
     private final SysUserMapper sysUserMapper;
     private final SysDepartmentMapper sysDepartmentMapper;
+    private final RedisCacheService cache;
 
     @Override
     public List<TeamVO> listTeams() {
@@ -121,6 +124,7 @@ public class TeamServiceImpl implements TeamService {
         team.setManagerId(dto.getManagerId());
         team.setStatus(1);
         sysTeamMapper.insert(team);
+        cache.deleteByPrefix(CacheKeys.TEAM_BASE_PREFIX);
         return team.getId();
     }
 
@@ -131,6 +135,7 @@ public class TeamServiceImpl implements TeamService {
         team.setDepartmentId(dto.getDepartmentId());
         team.setManagerId(dto.getManagerId());
         sysTeamMapper.updateById(team);
+        cache.deleteByPrefix(CacheKeys.TEAM_BASE_PREFIX);
     }
 
     @Override

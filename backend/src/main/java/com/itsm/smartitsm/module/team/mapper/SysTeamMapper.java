@@ -39,4 +39,10 @@ public interface SysTeamMapper extends BaseMapper<SysTeam> {
      */
     @Select("SELECT user_id FROM sys_team_member WHERE team_id = #{teamId} AND team_role = 'LEADER'")
     List<Long> selectTeamLeaderIds(@Param("teamId") Long teamId);
+
+    /**
+     * 查询用户首个所属团队ID（用于创建工单时自动分配团队）
+     */
+    @Select("SELECT team_id FROM sys_team_member WHERE user_id = #{userId} ORDER BY joined_at LIMIT 1")
+    Long selectFirstTeamIdByUserId(@Param("userId") Long userId);
 }

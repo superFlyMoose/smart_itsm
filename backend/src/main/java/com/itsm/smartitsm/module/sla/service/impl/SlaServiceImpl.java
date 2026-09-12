@@ -2,6 +2,8 @@ package com.itsm.smartitsm.module.sla.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.itsm.smartitsm.common.cache.CacheKeys;
+import com.itsm.smartitsm.common.cache.RedisCacheService;
 import com.itsm.smartitsm.common.exception.BusinessException;
 import com.itsm.smartitsm.common.result.PageResult;
 import com.itsm.smartitsm.common.result.ResultCode;
@@ -30,6 +32,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -44,19 +47,20 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class SlaServiceImpl implements SlaService {
 
+    /** SLA 规则缓存 TTL：1 小时 */
+    private static final Duration RULE_TTL = Duration.ofHours(1);
+
     private final SlaRuleMapper slaRuleMapper;
     private final TicketSlaMapper ticketSlaMapper;
     private final TicketMapper ticketMapper;
     private final SysTeamMapper sysTeamMapper;
     private final SysUserMapper sysUserMapper;
+    private final RedisCacheService cache;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void initForTicket(Ticket ticket) {
-        SlaRule rule = slaRuleMapper.selectOne(new LambdaQueryWrapper<SlaRule>()
-                .eq(SlaRule::getPriority, ticket.getPriority())
-                .eq(SlaRule::getStatus, 1)
-                .last("LIMIT 1"));
+        SlaRule rule = getEnabledRuleByPriority(ticket.getPriority());
         if (rule == null) {
             throw new BusinessException(ResultCode.SLA_CONFIG_ERROR,
                     "未找到优先级 " + ticket.getPriority() + " 对应的SLA规则");
@@ -200,6 +204,7 @@ public class SlaServiceImpl implements SlaService {
         applyRuleDto(rule, dto);
         rule.setStatus(1);
         slaRuleMapper.insert(rule);
+        cache.deleteByPrefix(CacheKeys.SLA_RULE_PREFIX);
         return rule.getId();
     }
 
@@ -208,6 +213,7 @@ public class SlaServiceImpl implements SlaService {
         SlaRule rule = getRuleOrThrow(ruleId);
         applyRuleDto(rule, dto);
         slaRuleMapper.updateById(rule);
+        cache.deleteByPrefix(CacheKeys.SLA_RULE_PREFIX);
     }
 
     @Override
@@ -215,6 +221,26 @@ public class SlaServiceImpl implements SlaService {
         SlaRule rule = getRuleOrThrow(ruleId);
         rule.setStatus(0);
         slaRuleMapper.updateById(rule);
+        cache.deleteByPrefix(CacheKeys.SLA_RULE_PREFIX);
+    }
+
+    /**
+     * 按优先级获取启用的 SLA 规则（缓存优先，未命中回源并回填）
+     */
+    private SlaRule getEnabledRuleByPriority(String priority) {
+        String key = CacheKeys.slaRuleByPriority(priority);
+        SlaRule cached = cache.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        SlaRule rule = slaRuleMapper.selectOne(new LambdaQueryWrapper<SlaRule>()
+                .eq(SlaRule::getPriority, priority)
+                .eq(SlaRule::getStatus, 1)
+                .last("LIMIT 1"));
+        if (rule != null) {
+            cache.set(key, rule, RULE_TTL);
+        }
+        return rule;
     }
 
     private void applyRuleDto(SlaRule rule, SlaRuleSaveDTO dto) {

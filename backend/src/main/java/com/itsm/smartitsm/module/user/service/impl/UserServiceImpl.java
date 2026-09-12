@@ -2,6 +2,8 @@ package com.itsm.smartitsm.module.user.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.itsm.smartitsm.common.cache.CacheKeys;
+import com.itsm.smartitsm.common.cache.RedisCacheService;
 import com.itsm.smartitsm.common.exception.BusinessException;
 import com.itsm.smartitsm.common.result.PageResult;
 import com.itsm.smartitsm.common.result.ResultCode;
@@ -19,7 +21,9 @@ import com.itsm.smartitsm.module.user.dto.UserQueryDTO;
 import com.itsm.smartitsm.module.user.entity.SysUser;
 import com.itsm.smartitsm.module.user.mapper.SysUserMapper;
 import com.itsm.smartitsm.module.user.service.UserService;
+import com.itsm.smartitsm.module.user.vo.UserOptionVO;
 import com.itsm.smartitsm.module.user.vo.UserVO;
+import com.itsm.smartitsm.security.CustomUserDetailsService;
 import com.itsm.smartitsm.security.LoginUser;
 import com.itsm.smartitsm.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
@@ -51,6 +55,8 @@ public class UserServiceImpl implements UserService {
     private final SysRoleMapper sysRoleMapper;
     private final SysUserRoleMapper sysUserRoleMapper;
     private final PasswordEncoder passwordEncoder;
+    private final RedisCacheService cache;
+    private final CustomUserDetailsService userDetailsService;
 
     @Override
     public PageResult<UserVO> pageUsers(UserQueryDTO query) {
@@ -67,6 +73,35 @@ public class UserServiceImpl implements UserService {
                 wrapper);
         List<UserVO> voList = page.getRecords().stream().map(this::buildUserVO).toList();
         return PageResult.of(page, voList);
+    }
+
+    @Override
+    public List<UserOptionVO> listActiveOptions() {
+        List<SysUser> users = sysUserMapper.selectList(
+                new LambdaQueryWrapper<SysUser>()
+                        .eq(SysUser::getStatus, 1)
+                        .orderByAsc(SysUser::getId));
+        if (users.isEmpty()) {
+            return new ArrayList<>();
+        }
+        Set<Long> departmentIds = users.stream()
+                .map(SysUser::getDepartmentId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, String> departmentNames = departmentIds.isEmpty()
+                ? Map.of()
+                : sysDepartmentMapper.selectBatchIds(departmentIds).stream()
+                        .collect(Collectors.toMap(SysDepartment::getId, SysDepartment::getName, (a, b) -> a));
+        return users.stream().map(user -> {
+            UserOptionVO vo = new UserOptionVO();
+            vo.setId(user.getId());
+            vo.setUsername(user.getUsername());
+            vo.setRealName(user.getRealName());
+            if (user.getDepartmentId() != null) {
+                vo.setDepartmentName(departmentNames.get(user.getDepartmentId()));
+            }
+            return vo;
+        }).toList();
     }
 
     @Override
@@ -108,6 +143,7 @@ public class UserServiceImpl implements UserService {
         user.setPhone(dto.getPhone());
         user.setEmail(dto.getEmail());
         sysUserMapper.updateById(user);
+        evictUserCaches(userId);
     }
 
     @Override
@@ -115,6 +151,8 @@ public class UserServiceImpl implements UserService {
         SysUser user = getUserOrThrow(userId);
         user.setStatus(0);
         sysUserMapper.updateById(user);
+        // 立即失效鉴权快照，被禁用用户下次请求即被拦截
+        evictUserCaches(userId);
     }
 
     @Override
@@ -135,6 +173,7 @@ public class UserServiceImpl implements UserService {
         user.setEmail(dto.getEmail());
         user.setPosition(dto.getPosition());
         sysUserMapper.updateById(user);
+        evictUserCaches(loginUser.getUserId());
     }
 
     @Override
@@ -162,6 +201,16 @@ public class UserServiceImpl implements UserService {
                 sysUserRoleMapper.insert(userRole);
             }
         }
+        // 角色变更立即生效
+        evictUserCaches(userId);
+    }
+
+    /**
+     * 失效用户相关缓存：鉴权快照 + 用户简要信息
+     */
+    private void evictUserCaches(Long userId) {
+        cache.delete(CacheKeys.userBase(userId));
+        userDetailsService.evictUser(userId);
     }
 
     private SysUser getUserOrThrow(Long userId) {

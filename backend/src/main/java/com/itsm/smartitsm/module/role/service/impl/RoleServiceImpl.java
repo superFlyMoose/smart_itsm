@@ -13,6 +13,7 @@ import com.itsm.smartitsm.module.role.mapper.SysRolePermissionMapper;
 import com.itsm.smartitsm.module.role.service.RoleService;
 import com.itsm.smartitsm.module.role.vo.PermissionVO;
 import com.itsm.smartitsm.module.role.vo.RoleVO;
+import com.itsm.smartitsm.security.CustomUserDetailsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +30,7 @@ public class RoleServiceImpl implements RoleService {
     private final SysRoleMapper sysRoleMapper;
     private final SysPermissionMapper sysPermissionMapper;
     private final SysRolePermissionMapper sysRolePermissionMapper;
+    private final CustomUserDetailsService userDetailsService;
 
     @Override
     public List<RoleVO> listRoles() {
@@ -77,6 +79,8 @@ public class RoleServiceImpl implements RoleService {
             rolePermission.setPermissionId(permissionId);
             sysRolePermissionMapper.insert(rolePermission);
         }
+        // 权限关系变更影响该角色下所有用户，递增全局版本使鉴权快照统一失效
+        userDetailsService.bumpAuthVersion();
     }
 
     private PermissionVO toPermissionVO(SysPermission permission) {

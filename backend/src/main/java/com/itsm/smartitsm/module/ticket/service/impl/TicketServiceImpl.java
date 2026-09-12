@@ -3,6 +3,7 @@ package com.itsm.smartitsm.module.ticket.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.itsm.smartitsm.common.cache.ReferenceCacheService;
 import com.itsm.smartitsm.common.enums.CollaborationStatusEnum;
 import com.itsm.smartitsm.common.enums.NotificationTypeEnum;
 import com.itsm.smartitsm.common.enums.TicketActionEnum;
@@ -17,7 +18,7 @@ import com.itsm.smartitsm.module.category.entity.TicketCategory;
 import com.itsm.smartitsm.module.category.mapper.TicketCategoryMapper;
 import com.itsm.smartitsm.module.department.entity.SysDepartment;
 import com.itsm.smartitsm.module.department.mapper.SysDepartmentMapper;
-import com.itsm.smartitsm.module.notification.service.NotificationService;
+import com.itsm.smartitsm.module.notification.mq.NotificationPublisher;
 import com.itsm.smartitsm.module.sla.service.SlaService;
 import com.itsm.smartitsm.module.team.entity.SysTeam;
 import com.itsm.smartitsm.module.team.mapper.SysTeamMapper;
@@ -106,7 +107,8 @@ public class TicketServiceImpl implements TicketService {
     private final SysDepartmentMapper sysDepartmentMapper;
     private final TicketStateMachine ticketStateMachine;
     private final SlaService slaService;
-    private final NotificationService notificationService;
+    private final NotificationPublisher notificationPublisher;
+    private final ReferenceCacheService referenceCacheService;
     private final TicketTransferRequestService ticketTransferRequestService;
 
     @Value("${smart-itsm.storage.upload-dir:uploads}")
@@ -121,11 +123,15 @@ public class TicketServiceImpl implements TicketService {
         if (category == null || category.getStatus() == null || category.getStatus() != 1) {
             throw new BusinessException(ResultCode.NOT_FOUND, "工单分类不存在或已禁用");
         }
-        if (dto.getTeamId() != null) {
-            SysTeam team = sysTeamMapper.selectById(dto.getTeamId());
+        Long teamId = dto.getTeamId();
+        if (teamId != null) {
+            SysTeam team = sysTeamMapper.selectById(teamId);
             if (team == null || team.getStatus() == null || team.getStatus() != 1) {
                 throw new BusinessException(ResultCode.NOT_FOUND, "处理团队不存在或已禁用");
             }
+        } else {
+            // 未指定团队时，自动分配到创建者所属团队，确保团队负责人可见
+            teamId = sysTeamMapper.selectFirstTeamIdByUserId(loginUser.getUserId());
         }
 
         Ticket ticket = new Ticket();
@@ -134,7 +140,7 @@ public class TicketServiceImpl implements TicketService {
         ticket.setDescription(dto.getDescription());
         ticket.setCategoryId(dto.getCategoryId());
         ticket.setPriority(dto.getPriority().name());
-        ticket.setTeamId(dto.getTeamId());
+        ticket.setTeamId(teamId);
         ticket.setCreatorId(loginUser.getUserId());
         ticket.setDepartmentId(loginUser.getUser().getDepartmentId());
         ticket.setStatus(TicketStatusEnum.OPEN.name());
@@ -269,7 +275,7 @@ public class TicketServiceImpl implements TicketService {
 
         recordHistory(ticketId, loginUser.getUserId(), TicketActionEnum.ASSIGN,
                 current.name(), target.name(), dto.getRemark());
-        notificationService.create(dto.getAssigneeId(), NotificationTypeEnum.TICKET_ASSIGNED,
+        notificationPublisher.publish(dto.getAssigneeId(), NotificationTypeEnum.TICKET_ASSIGNED,
                 "您有新的工单待处理",
                 "工单[" + ticket.getTicketNo() + "]" + ticket.getTitle() + " 已分配给您，请及时接受处理。",
                 RELATED_TYPE_TICKET, ticketId);
@@ -302,7 +308,7 @@ public class TicketServiceImpl implements TicketService {
         }
         recordHistory(ticketId, loginUser.getUserId(), TicketActionEnum.ACCEPT,
                 current.name(), target.name(), "工程师接受工单");
-        notificationService.create(ticket.getCreatorId(), NotificationTypeEnum.TICKET_ACCEPTED,
+        notificationPublisher.publish(ticket.getCreatorId(), NotificationTypeEnum.TICKET_ACCEPTED,
                 "您的工单已被接受",
                 "工单[" + ticket.getTicketNo() + "] 已被工程师接受并开始处理。",
                 RELATED_TYPE_TICKET, ticketId);
@@ -343,7 +349,7 @@ public class TicketServiceImpl implements TicketService {
         String remark = "工单转派给新工程师处理。" + (StringUtils.hasText(dto.getRemark()) ? dto.getRemark() : "");
         recordHistory(ticketId, loginUser.getUserId(), TicketActionEnum.TRANSFER,
                 current.name(), target.name(), remark);
-        notificationService.create(dto.getTargetAssigneeId(), NotificationTypeEnum.TICKET_TRANSFERRED,
+        notificationPublisher.publish(dto.getTargetAssigneeId(), NotificationTypeEnum.TICKET_TRANSFERRED,
                 "您有转派的工单待接受",
                 "工单[" + ticket.getTicketNo() + "]" + ticket.getTitle() + " 已转派给您，请及时接受处理。",
                 RELATED_TYPE_TICKET, ticketId);
@@ -398,7 +404,7 @@ public class TicketServiceImpl implements TicketService {
         recordHistory(ticketId, loginUser.getUserId(), TicketActionEnum.RESOLVE,
                 current.name(), target.name(),
                 truncate(StringUtils.hasText(dto.getRemark()) ? dto.getRemark() : "工程师提交解决方案"));
-        notificationService.create(ticket.getCreatorId(), NotificationTypeEnum.TICKET_RESOLVED,
+        notificationPublisher.publish(ticket.getCreatorId(), NotificationTypeEnum.TICKET_RESOLVED,
                 "您的工单已提交解决方案，请确认",
                 "工单[" + ticket.getTicketNo() + "] 已提交解决方案，请及时确认问题是否解决。",
                 RELATED_TYPE_TICKET, ticketId);
@@ -425,7 +431,7 @@ public class TicketServiceImpl implements TicketService {
         recordHistory(ticketId, loginUser.getUserId(), TicketActionEnum.CLOSE,
                 current.name(), target.name(), "用户确认解决，工单关闭");
         if (ticket.getAssigneeId() != null) {
-            notificationService.create(ticket.getAssigneeId(), NotificationTypeEnum.TICKET_CLOSED,
+            notificationPublisher.publish(ticket.getAssigneeId(), NotificationTypeEnum.TICKET_CLOSED,
                     "工单已关闭",
                     "工单[" + ticket.getTicketNo() + "] 已被用户确认解决并关闭。",
                     RELATED_TYPE_TICKET, ticketId);
@@ -454,7 +460,7 @@ public class TicketServiceImpl implements TicketService {
         recordHistory(ticketId, loginUser.getUserId(), TicketActionEnum.REJECT_RESOLUTION,
                 current.name(), target.name(), truncate(dto.getReason()));
         if (ticket.getAssigneeId() != null) {
-            notificationService.create(ticket.getAssigneeId(), NotificationTypeEnum.TICKET_REJECTED,
+            notificationPublisher.publish(ticket.getAssigneeId(), NotificationTypeEnum.TICKET_REJECTED,
                     "工单解决方案被拒绝，请重新处理",
                     "工单[" + ticket.getTicketNo() + "] 的解决方案被用户拒绝，请重新处理。拒绝原因："
                             + dto.getReason(),
@@ -487,7 +493,7 @@ public class TicketServiceImpl implements TicketService {
                 current.name(), target.name(),
                 truncate(StringUtils.hasText(dto.getReason()) ? dto.getReason() : "工单取消"));
         if (ticket.getAssigneeId() != null) {
-            notificationService.create(ticket.getAssigneeId(), NotificationTypeEnum.TICKET_CANCELLED,
+            notificationPublisher.publish(ticket.getAssigneeId(), NotificationTypeEnum.TICKET_CANCELLED,
                     "工单已取消",
                     "工单[" + ticket.getTicketNo() + "] 已被取消。",
                     RELATED_TYPE_TICKET, ticketId);
@@ -510,7 +516,7 @@ public class TicketServiceImpl implements TicketService {
 
         String content = "工单[" + ticket.getTicketNo() + "] 被催办：" + message;
         if (ticket.getAssigneeId() != null) {
-            notificationService.create(ticket.getAssigneeId(), NotificationTypeEnum.TICKET_NUDGE,
+            notificationPublisher.publish(ticket.getAssigneeId(), NotificationTypeEnum.TICKET_NUDGE,
                     "工单催办提醒", content, RELATED_TYPE_TICKET, ticketId);
         }
         notifyTeamManagers(ticket, NotificationTypeEnum.TICKET_NUDGE, "工单催办提醒", content);
@@ -542,10 +548,10 @@ public class TicketServiceImpl implements TicketService {
         // 评论通知：创建人评论通知处理人，处理人评论通知创建人
         String content = "工单[" + ticket.getTicketNo() + "] 有新评论：" + dto.getContent();
         if (loginUser.getUserId().equals(ticket.getCreatorId()) && ticket.getAssigneeId() != null) {
-            notificationService.create(ticket.getAssigneeId(), NotificationTypeEnum.TICKET_COMMENTED,
+            notificationPublisher.publish(ticket.getAssigneeId(), NotificationTypeEnum.TICKET_COMMENTED,
                     "工单有新评论", content, RELATED_TYPE_TICKET, ticketId);
         } else if (!loginUser.getUserId().equals(ticket.getCreatorId())) {
-            notificationService.create(ticket.getCreatorId(), NotificationTypeEnum.TICKET_COMMENTED,
+            notificationPublisher.publish(ticket.getCreatorId(), NotificationTypeEnum.TICKET_COMMENTED,
                     "工单有新评论", content, RELATED_TYPE_TICKET, ticketId);
         }
         return commentId;
@@ -636,7 +642,7 @@ public class TicketServiceImpl implements TicketService {
                 current.name(), target.name(),
                 truncate("发起协作，协作人：" + collaborator.getRealName()
                         + (StringUtils.hasText(dto.getMessage()) ? "，" + dto.getMessage() : "")));
-        notificationService.create(dto.getCollaboratorId(), NotificationTypeEnum.TICKET_COLLABORATION,
+        notificationPublisher.publish(dto.getCollaboratorId(), NotificationTypeEnum.TICKET_COLLABORATION,
                 "您有新的协作请求",
                 "工单[" + ticket.getTicketNo() + "] 邀请您协助处理："
                         + (StringUtils.hasText(dto.getMessage()) ? dto.getMessage() : ticket.getTitle()),
@@ -925,7 +931,42 @@ public class TicketServiceImpl implements TicketService {
                 && sysTeamMapper.selectManagedTeamIds(loginUser.getUserId()).contains(ticket.getTeamId())) {
             return;
         }
+        // 有效协作（待接受/处理中）的协作人可查看工单，以便接受或完成协作
+        if (isActiveCollaborator(ticket.getId(), loginUser.getUserId())) {
+            return;
+        }
         throw new BusinessException(ResultCode.FORBIDDEN, "无权查看该工单");
+    }
+
+    /**
+     * 判断用户是否为工单的有效协作人（协作记录处于待接受/处理中）
+     */
+    private boolean isActiveCollaborator(Long ticketId, Long userId) {
+        Long count = ticketCollaborationMapper.selectCount(
+                new LambdaQueryWrapper<TicketCollaboration>()
+                        .eq(TicketCollaboration::getTicketId, ticketId)
+                        .eq(TicketCollaboration::getCollaboratorId, userId)
+                        .in(TicketCollaboration::getStatus,
+                                CollaborationStatusEnum.PENDING.name(),
+                                CollaborationStatusEnum.PROCESSING.name()));
+        return count != null && count > 0;
+    }
+
+    /**
+     * 查询用户作为有效协作人（待接受/处理中）参与的工单ID集合
+     */
+    private List<Long> listActiveCollaboratedTicketIds(Long userId) {
+        return ticketCollaborationMapper.selectList(
+                        new LambdaQueryWrapper<TicketCollaboration>()
+                                .select(TicketCollaboration::getTicketId)
+                                .eq(TicketCollaboration::getCollaboratorId, userId)
+                                .in(TicketCollaboration::getStatus,
+                                        CollaborationStatusEnum.PENDING.name(),
+                                        CollaborationStatusEnum.PROCESSING.name()))
+                .stream()
+                .map(TicketCollaboration::getTicketId)
+                .distinct()
+                .toList();
     }
 
     /**
@@ -946,6 +987,11 @@ public class TicketServiceImpl implements TicketService {
                 if (!managedTeamIds.isEmpty()) {
                     w.or().in(Ticket::getTeamId, managedTeamIds);
                 }
+            }
+            // 协作人可在列表看到自己待接受/处理中的协作工单
+            List<Long> collaboratedTicketIds = listActiveCollaboratedTicketIds(userId);
+            if (!collaboratedTicketIds.isEmpty()) {
+                w.or().in(Ticket::getId, collaboratedTicketIds);
             }
         });
     }
@@ -1018,7 +1064,7 @@ public class TicketServiceImpl implements TicketService {
         }
         managerIds.addAll(sysTeamMapper.selectTeamLeaderIds(ticket.getTeamId()));
         managerIds.forEach(managerId ->
-                notificationService.create(managerId, type, title, content,
+                notificationPublisher.publish(managerId, type, title, content,
                         RELATED_TYPE_TICKET, ticket.getId()));
     }
 
@@ -1066,27 +1112,15 @@ public class TicketServiceImpl implements TicketService {
     }
 
     private Map<Long, String> batchLoadUserNames(Set<Long> userIds) {
-        if (userIds == null || userIds.isEmpty()) {
-            return Map.of();
-        }
-        return sysUserMapper.selectBatchIds(userIds).stream()
-                .collect(Collectors.toMap(SysUser::getId, SysUser::getRealName, (a, b) -> a));
+        return referenceCacheService.getUserNames(userIds);
     }
 
     private Map<Long, String> batchLoadTeamNames(Set<Long> teamIds) {
-        if (teamIds == null || teamIds.isEmpty()) {
-            return Map.of();
-        }
-        return sysTeamMapper.selectBatchIds(teamIds).stream()
-                .collect(Collectors.toMap(SysTeam::getId, SysTeam::getName, (a, b) -> a));
+        return referenceCacheService.getTeamNames(teamIds);
     }
 
     private Map<Long, String> batchLoadCategoryNames(Set<Long> categoryIds) {
-        if (categoryIds == null || categoryIds.isEmpty()) {
-            return Map.of();
-        }
-        return ticketCategoryMapper.selectBatchIds(categoryIds).stream()
-                .collect(Collectors.toMap(TicketCategory::getId, TicketCategory::getName, (a, b) -> a));
+        return referenceCacheService.getCategoryNames(categoryIds);
     }
 
     private String truncate(String text) {
